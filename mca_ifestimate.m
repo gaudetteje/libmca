@@ -29,17 +29,17 @@ function [IF,p] = mca_ifestimate(x,varargin)
 
 % first search stage
 nfft0 = 1024;                   % total number of FrFT points in u domain - 1st cut
-aDel0 = 0.05;                   % resolution of alpha domain - 1st cut
+aDel0 = 0.01;                   % resolution of alpha domain - 1st cut
 
 % 2nd search stage
 nfft1 = 4096;                   % total number of FrFT points in u domain - 2nd cut
-aDel1 = 0.01;                   % resolution of alpha domain - 2nd cut
+aDel1 = 0.001;                   % resolution of alpha domain - 2nd cut
 
 % default parameters
 aRange = 0.2;                   % window range in alpha-domain to search for ridge
 uRange = 0.2;                   % window range in u-domain to search for ridge
 thresh = 0.45;                  % normalized threshold for finding points along ridge 
-aBound = [0.1 .975];                % minimum and maximum initial search bounds on alpha
+aBound = [0.5 1.025];                % minimum and maximum initial search bounds on alpha
 
 
 % IF polynomial fitting parameters
@@ -47,7 +47,7 @@ FITMODE = 'poly'; %'spline'; %
 polyOrd = 3;
 
 % parse optional parameters
-PLOTFLAG = 0;
+PLOTFLAG = 1;
 GENAVI = 0;
 switch nargin
     case 6
