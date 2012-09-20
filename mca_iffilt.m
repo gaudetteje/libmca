@@ -66,6 +66,7 @@ assert(size(x,1) == size(IF,1), 'X and IF must be equal length vectors')
 
 % define filter
 switch nargin
+    case 2
     case 3
         if islogical(varargin{1})
             PLOTFLAG = varargin{1};
