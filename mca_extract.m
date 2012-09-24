@@ -148,9 +148,13 @@ if PLOTFLAG
     % plot HSA for each IMF
     for n=1 %:size(IF,2)
         figure;
-        plotcol(t,IF(:,n).',IA(:,n).',db(IA(:,n)).');
+        c = db(IA(:,n));
+        cmap = flipud(hot);
+        ccplot(t,IF(:,n).',c.',cmap)
+%        plotcol(t,IF(:,n).',IA(:,n).',db(IA(:,n)).');
         hold on
-        colormap(flipud(hot))
+        colormap(cmap)
+        set(gca,'clim',[min(c) max(c)])
         colorbar
         view(2)
         %set(gca,'ylim',[0 125])

@@ -44,7 +44,7 @@ aBound = [0.005 .975];                % minimum and maximum initial search bound
 
 % IF polynomial fitting parameters
 FITMODE = 'poly'; %'spline'; %
-polyOrd = 1;
+polyOrd = 3;
 
 % parse optional parameters
 PLOTFLAG = 0;
