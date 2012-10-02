@@ -5,18 +5,26 @@ function [IF,p] = mca_ifestimate(x,varargin)
 %      and returns the estimated IF of the dominant component.
 % IF = mca_ifestimate(X,Fs,U,A) overrides the default parameters.
 % IF = mca_ifestimate(X,Fs,U,A,THRESH) sets the threshold
-% IF = mca_ifestimate(X,Fs,U,A,THRESH,true) will turn plotting on/off
+% IF = mca_ifestimate(X,Fs,U,A,THRESH,POLYORD) sets the fitted curve's polynomial order
+% IF = mca_ifestimate(X,Fs,U,A,THRESH,POLYORD,ADEL1) sets the fine alpha resolution
+% IF = mca_ifestimate(X,Fs,U,A,THRESH,POLYORD,ADEL1,ABOUND) sets the alpha boundary
+% IF = mca_ifestimate(...,true) will display the progress
 %
 % Input parameters:
 %   FS = 1       sampling rate of analytic signal X
 %   UMAX = 0.2   window range in alpha-domain to search for next peak along ridge
 %   AMAX = 0.2   window range in u-domain to search for next peak along ridge
 %   THRESH = 0.45  normalized threshold to locate peaks relative to global maximum
+%   POLYORD = 3     polynomial order for the fitted curve
 %
-%   NFFT0 = 1024;
-%   ADEL0 = 0.05;
-%   NFFT1 = 8192;
-%   ADEL1 = 0.01;
+%   NFFT0 = 1024;           number of frft (eq. u-domain) points in first cut
+%   ADEL0 = 0.025;           resolution of frft angles in first cut
+%   NFFT1 = 4096;           number of frft points in second cut
+%   ADEL1 = 0.01;           resolution of frft angles in second cut
+%
+%   ARANGE = 0.2;               search extent in alpha-domain
+%   URANGE = 0.2;               search extent in U-domain
+%   ABOUND = [0.005 0.975];     absolute bounds on alpha
 %
 % Notes:
 %   The signal X should first be made analytic by the Hilbert transform
@@ -27,9 +35,11 @@ function [IF,p] = mca_ifestimate(x,varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % default user parameters
 
+Fs = 1;                         % undefined sampling rate
+
 % first search stage
 nfft0 = 1024;                   % total number of FrFT points in u domain - 1st cut
-aDel0 = 0.025;                  % resolution of alpha domain - 1st cut
+aDel0 = 0.025;                   % resolution of alpha domain - 1st cut
 
 % 2nd search stage
 nfft1 = 4096;                   % total number of FrFT points in u domain - 2nd cut
@@ -39,36 +49,60 @@ aDel1 = 0.01;                   % resolution of alpha domain - 2nd cut
 aRange = 0.2;                   % window range in alpha-domain to search for ridge
 uRange = 0.2;                   % window range in u-domain to search for ridge
 thresh = 0.45;                  % normalized threshold for finding points along ridge 
-aBound = [0.005 .975];                % minimum and maximum initial search bounds on alpha
+aBound = [-2 0];%[0.025 .975];          % minimum and maximum initial search bounds on alpha
 
 
 % IF polynomial fitting parameters
-FITMODE = 'poly'; %'spline'; %
+FITMODE = 'poly'; %'spline';
 polyOrd = 3;
 
-% parse optional parameters
 PLOTFLAG = 0;
 GENAVI = 0;
-switch nargin
+
+
+% look for plot flag at end of parameters
+nParams = nargin-1;
+if nParams > 1
+    if islogical(varargin{end})
+        PLOTFLAG = varargin{end};
+        nParams = nParams - 1;
+    end
+end
+
+% parse optional parameters
+switch nParams
+    case 7
+        Fs = varargin{1};
+        uRange = varargin{2};
+        aRange = varargin{3};
+        thresh = varargin{4};
+        polyOrd = varargin{5};
+        aDel1 = varargin{6};
+        aBound = varargin{7};
     case 6
         Fs = varargin{1};
         uRange = varargin{2};
         aRange = varargin{3};
         thresh = varargin{4};
-        PLOTFLAG = varargin{5};
+        polyOrd = varargin{5};
+        aDel1 = varargin{6};
     case 5
         Fs = varargin{1};
         uRange = varargin{2};
         aRange = varargin{3};
         thresh = varargin{4};
+        polyOrd = varargin{5};
     case 4
+        Fs = varargin{1};
+        uRange = varargin{2};
+        aRange = varargin{3};
+        thresh = varargin{4};
+    case 3
         Fs = varargin{1};
         uRange = varargin{2};
         aRange = varargin{3};
     case 2
         Fs = varargin{1};
-    case 1
-        Fs = 1;
     otherwise
         error('Bad number of input parameters')
 end
@@ -123,7 +157,7 @@ Z1 = Z1(uIdx,:);
 if PLOTFLAG
     fh1 = figure(gcf); title(sprintf('(%g, %g, %g)', aMax1, uMax1, zMax1));
     set(gca,'yLim',[u1(1) u1(end)]);
-    hold on; plot(aMax1,uMax1,'g+','markersize',5);
+    hold on; plot(aMax1,uMax1,'go','markersize',10);
     
     % show localized bounding box
     if nfft0 == nfft1
@@ -156,13 +190,13 @@ M = numel(aPeaks);      % number of lines found
 %% find intersection points of adjacent lines
 
 % TBD - interpolate additional points between boundaries and endpoints
-xInt(M+1) = N;
-yInt(M+1) = mu0(end) * N + f0(end);
-xInt(1) = 1;
-yInt(1) = f0(1);
+%xInt(M+1) = N;
+%yInt(M+1) = mu0(end) * N + f0(end);
+%xInt(1) = 1;
+%yInt(1) = f0(1);
 for k = 2:M
-    xInt(k) = (f0(k)-f0(k-1)) / (mu0(k-1)-mu0(k));
-    yInt(k) = mu0(k) * xInt(k) + f0(k);
+    xInt(k-1) = (f0(k)-f0(k-1)) / (mu0(k-1)-mu0(k));
+    yInt(k-1) = mu0(k) * xInt(k-1) + f0(k);
 end
 
 
@@ -171,6 +205,12 @@ end
 %% interpolate points and return final IF estimate
 [xInt,sortIdx] = sort(xInt);
 yInt = yInt(sortIdx);
+
+% remove points before/after call start/end
+idx = (xInt < 0) | (xInt > N);
+xInt(idx) = [];
+yInt(idx) = [];
+
 switch (FITMODE)
     case 'poly'
         p = polyfit(xInt,yInt,polyOrd);
@@ -236,8 +276,6 @@ if PLOTFLAG
     
     
     % iteratively show progression over FrFT & STFT
-    figure(fh1)
-    plot(aPeaks(1),uPeaks(1),'g+','markersize',6);
     %figure(fh2)
     %lh0 = plot(1e3*t./Fs, lfm(1:N,1).*Fs*1e-3, 'c', 'linewidth', 1);
     %axis([0 1e3*N/Fs 0 (1e-3*Fs)/2])
@@ -253,11 +291,11 @@ if PLOTFLAG
     end
     
     %tilefigs([fh1 fh2], 2,2)
-    for k=2:M
-        % mark next point on FrFT
-        figure(fh1)
-        plot(aPeaks(k),uPeaks(k),'g+','linewidth',2,'markersize',2);
-        
+%    for k=2:M
+%        % mark next point on FrFT
+    figure(fh1)
+    plot(aPeaks,uPeaks,'g+','linewidth',2,'markersize',2);
+%        
 %         % draw next line & its intersection point on STFT
 %         figure(fh2)
 %         lh1 = plot(1e3*(1:N)./Fs, lfm(1:N,k).*Fs*1e-3, 'c', 'linewidth', 1);
@@ -277,14 +315,13 @@ if PLOTFLAG
 %         %pause(0.1);
 %         delete(lh0)
 %         lh0 = lh1;
-        
-    end
+%    end
 %     if exist('lh1','var')
 %         delete(lh1)
 %     end
     
     % add delay to 2nd last frame
-    drawnow
+%    drawnow
     if GENAVI
         for cnt=1:3
             F1 = getframe(fh1);
@@ -295,8 +332,9 @@ if PLOTFLAG
         end
     end
     
-    % show resulting IF over spectrogram
+    % show intersection points and estimated IF over spectrogram
     figure(fh2)
+    plot(1e3*xInt./Fs,yInt*Fs*1e-3,'.c','markersize',6)
     plot(1e3*t./Fs, IF*Fs*1e-3, 'g', 'linewidth',2);
    
     % get last frame and save avi
