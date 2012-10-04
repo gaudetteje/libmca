@@ -35,8 +35,6 @@ function [IF,p] = mca_ifestimate(x,varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % default user parameters
 
-Fs = 1;                         % undefined sampling rate
-
 % first search stage
 nfft0 = 1024;                   % total number of FrFT points in u domain - 1st cut
 aDel0 = 0.025;                   % resolution of alpha domain - 1st cut
@@ -49,7 +47,7 @@ aDel1 = 0.01;                   % resolution of alpha domain - 2nd cut
 aRange = 0.2;                   % window range in alpha-domain to search for ridge
 uRange = 0.2;                   % window range in u-domain to search for ridge
 thresh = 0.45;                  % normalized threshold for finding points along ridge 
-aBound = [-2 0];%[0.025 .975];          % minimum and maximum initial search bounds on alpha
+aBound = [-2 2];%[0.025 .975];          % minimum and maximum initial search bounds on alpha
 
 
 % IF polynomial fitting parameters
@@ -62,7 +60,7 @@ GENAVI = 0;
 
 % look for plot flag at end of parameters
 nParams = nargin-1;
-if nParams > 1
+if nParams > 0
     if islogical(varargin{end})
         PLOTFLAG = varargin{end};
         nParams = nParams - 1;
@@ -103,6 +101,8 @@ switch nParams
         aRange = varargin{3};
     case 2
         Fs = varargin{1};
+    case 0
+        Fs = 1;
     otherwise
         error('Bad number of input parameters')
 end
