@@ -143,6 +143,7 @@ end
 
 % constrain search for alpha within bounds
 alpha1 = (max(aMax1-aRange/2, aBound(1)) : aDel1 : min(aMax1+aRange/2, aBound(2)));
+assert(numel(alpha1) > 0,'Ran into boundary constaints!  No alpha to search');
 u1 = linspace(0,1,nfft1);
 Z1 = mca_frft(x,alpha1,u1,PLOTFLAG);
 
@@ -423,7 +424,8 @@ if nargin > 3
 end
 
 % set y-bound for each iteration
-yDel = round(0.1 * numel(y));  % hardcode to 10% of range
+M = numel(y);
+yDel = round(0.1 * M);  % hardcode to 10% of range
 
 N = numel(x);
 xpk = NaN(N,1);
@@ -449,6 +451,8 @@ zpk = NaN(N,1);
 yLoc = yLoc0;
 for i = (xLoc0:N)
     yRng = (yLoc-yDel:yLoc+yDel);
+    yRng(yRng < 1) = [];    % remove negative u indices
+    yRng(yRng > M) = [];     % remove u indices greater than boundary 
     [zVal,yIdx] = sort(Z(yRng,i),'descend');
     if zVal(1) >= gamma*zMax0
         yLoc = yRng(yIdx(1));
@@ -464,6 +468,8 @@ end
 yLoc = yLoc0;
 for i = (xLoc0-1:-1:1)
     yRng = (yLoc-yDel:yLoc+yDel);
+    yRng(yRng < 1) = [];    % remove negative u indices
+    yRng(yRng > M) = [];     % remove u indices greater than boundary 
     [zVal,yIdx] = sort(Z(yRng,i),'descend');
     if zVal(1) >= gamma*zMax0
         yLoc = yRng(yIdx(1));

@@ -150,7 +150,7 @@ if PLOTFLAG
         figure;
         c = db(IA(:,n));
         cmap = flipud(hot);
-        ccplot(t,IF(:,n).',c.',cmap)
+        ccplot(t,IF(:,n).',c.',cmap);
 %        plotcol(t,IF(:,n).',IA(:,n).',db(IA(:,n)).');
         hold on
         colormap(cmap)
