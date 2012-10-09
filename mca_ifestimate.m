@@ -99,7 +99,7 @@ switch nParams
         Fs = varargin{1};
         uRange = varargin{2};
         aRange = varargin{3};
-    case 2
+    case 1
         Fs = varargin{1};
     case 0
         Fs = 1;
