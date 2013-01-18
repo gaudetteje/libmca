@@ -47,7 +47,7 @@ aDel1 = 0.01;                   % resolution of alpha domain - 2nd cut
 aRange = 0.2;                   % window range in alpha-domain to search for ridge
 uRange = 0.2;                   % window range in u-domain to search for ridge
 thresh = 0.45;                  % normalized threshold for finding points along ridge 
-aBound = [-2 2];%[0.025 .975];          % minimum and maximum initial search bounds on alpha
+aBound = [0.025 .975];          % minimum and maximum initial search bounds on alpha
 
 
 % IF polynomial fitting parameters

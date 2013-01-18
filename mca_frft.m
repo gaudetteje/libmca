@@ -1,6 +1,9 @@
 function [Z,A,U] = mca_frft(x,alpha,u,varargin)
 % MCA_FRFT  computes the Fractional Fourier Transform plane for each alpha
 %
+% [Z,A,U] = mca_frft(X,ALPHA,U)
+% mca_frft(...,true) plots the result
+%
 % see also MCA_IFESTIMATE, MCA_EXTRACT
 
 % optional parameters
