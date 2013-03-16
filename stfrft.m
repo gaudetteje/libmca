@@ -1,24 +1,38 @@
-function y = stfrft(x,varargin)
+function [t,y,z,t0,y0,z0] = stfrft(x,varargin)
 % STFrFT  computes the short-time fractional Fourier transform
 %
 % y = stfrft(x) uses the default values
 %
 % wind, noverlap, nfft, nalpha, 
 
-DEBUG = false;
+% TODO:
+%
+% findpeaks subfunction needs to search for "local" maximums on surface
+% around some area - there must be some existing algorithms to do this!
+%
+% Once we find a peak, search for its harmonic or subharmonics by
+% constraining window
 
-% default values
+DEBUG = true;
+
+% frft search parameters
+nfft = 2^8;
+nalpha = 1e3;
+gamma = .001;                   % normalized threshold for valid points in TF plane
+
+% window parameters
 wind = @hamming;
-noverlap = 0;
-nfft = 100;
-nalpha = 200;
+noverlap = nfft * 0;
 
-% parameter checking
-if nargin > 5
-    error('Incorrect number of parameters entered')
-end
+% define signal assumptions
+nComp = 3;                      % maximum number of components to retain
+
+% curve fitting parameters
+FITMODE = 'poly'; %'spline';
+polyOrd = 1;                    % polynomial fit order
 
 % assign optional parameters
+if nargin > 5, error('Incorrect number of parameters entered'); end
 params = {wind, noverlap, nfft, nalpha};
 params(1:numel(varargin)) = varargin;
 [wind, noverlap, nfft, nalpha] = params{:};
@@ -27,8 +41,9 @@ params(1:numel(varargin)) = varargin;
 if size(x,1) == 1
     x = x(:);       % force into column vector if single channel
 end
+t = 1:numel(x);     % assign index if no sampling data entered
 
-% ensure signal is analytic signal
+% ensure signal is analytic
 if isreal(x)
     x = hilbert(x);
 end
@@ -45,18 +60,20 @@ elseif isa(wind,'function_handle')
 else
     error('Unknown window entered - must be string or function handle')
 end
-w = w(:);           % force into column vector
+w = w(:);           % force window into column vector
 
 % find starting index for each block
-block = (1:nfft-noverlap:L);
+block = floor(1:nfft-noverlap:L);
 
 % FrFT indices
-alpha = linspace(-1,1,nalpha);
+alpha = linspace(0,1.99,nalpha);
 mu = linspace(0,1,nfft);
 
 % init values
 mu0 = zeros(numel(block),1);
-f0 = zeros(numel(block),1);
+y0 = zeros(numel(block),nComp);
+z0 = zeros(numel(block),nComp);
+
 
 % iterate over each block
 for bNum = 1:numel(block)
@@ -70,18 +87,78 @@ for bNum = 1:numel(block)
     % extract and window data block
     b = x(bIdx) .* repmat(w,1,M);
     
-    % compute FrFT
-    [Z,A,U] = mca_frft(b,alpha,mu,DEBUG);
+    for cNum = 1:nComp
+        % compute FrFT across entire rotation fraction plane
+        Z = mca_frft(b,alpha,mu,DEBUG);
+% DO LOW RES SEARCH HERE
+        % find dominant peak and map corresponding LFM
+        [aMax0,uMax0,z0(bNum,cNum)] = find_peaks(Z,alpha,mu);
+        [~,mu0(bNum),y0(bNum,cNum)] = lfm_est(aMax0,uMax0,1,nfft);
+        
+        % find harmonic and subharmonic locations in frac-rot plane
+        harm = [1./(nComp:-1:2) 1:nComp];      % possible harmonic factors
+        [a0,u0] = frft_est(mu0(bNum)*harm,y0(bNum,cNum)*harm,1,nfft);
+        
+        % select strongest peaks from each possible location
+        for h = 1:numel(harm)
+            % select alpha search region
+            aLower = find(alpha >= a0(h)-aRange/2, 1, 'first');
+            aUpper = find(alpha <= a0(h)+aRange/2, 1, 'last');
+            aIdx = aLower:aUpper;
+            a1 = alpha(aIdx);
+            
+            uLower = find(mu >= u0(h)-uRange/2, 1, 'first');
+            uUpper = find(mu <= u0(h)+uRange/2, 1, 'last');
+            uIdx = uLower:uUpper;
+            u1 = mu(uIdx);
+            
+            Z1 = Z1(uIdx,aIdx);
+            [aMax1(h),uMax1(h),zMax1(h)] = find_peaks(Z1,a1,u1,1);
+        end
+        %[~,idx1] = sort(zMax);
+        %idx1 = idx1(1:nComp);
+        
+        % save points to matrix
+        z0(bNum,:) = zMax1(idx1);
+        %aMax1 = aMax1(idx1);
+        %uMax1 = uMax1(idx1);
+        
+        [~,mu0(bNum,:),y0(bNum,:)] = lfm_est(aMax1,uMax1,1,nfft);   % convert to LFM
+    end
     
-    % estimate dominant LFM
-    [aMax,uMax,zMax] = find_peaks(Z,A,U,1);
-    [~,mu0(bNum),f0(bNum)] = lfm_est(aMax,uMax,1,nfft);
-    
-    %pause
 end
 
-y = x;
 
+%% split points into multiple harmonics
+%%% assume that points are always monotonically decreasing!
+
+
+% fit polynomial curve to points
+t0 = (block + nfft/2)';
+switch (FITMODE)
+    case 'poly'
+        ypp = polyfit(t0,y0,polyOrd);
+        y = polyval(ypp,t);
+
+        zpp = polyfit(t0,z0,polyOrd);
+        z = polyval(zpp,t);
+    case 'spline'
+        y = spline(t0,y0,t);
+        z = spline(t0,z0,t);
+    otherwise
+        error('Unknown fit mode')
+end
+
+%% plot results
+if DEBUG
+    plot3(t,y,z);
+    hold on;
+    grid on;
+    plot3(t0,y0,z0,'o')
+    xlabel('Time')
+    ylabel('Frequency')
+    zlabel('Magnitude')
+end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -103,7 +180,7 @@ end
 Zcol = Z(:);
 [val,idx] = sort(Zcol,'descend');
 
-% extract N highest peaks
+% extract N highest values
 [ypk,xpk] = ind2sub(size(Z),idx(1:N));
 x = x(xpk);
 y = y(ypk);
@@ -125,3 +202,12 @@ f0 = fc - BW./2;
 t = (0:T-1)';
 lfm = ones(size(t))*f0' + t*mu0';
 lfm = Fs.*lfm;    % correct for sampling rate
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+function [a0,u0] = frft_est(mu0,f0,Fs,T)
+% FRFT_EST  estimate peak (alpha,u) position of LFM with specified parameters
+a0 = -2/pi .* atan(Fs^2/T ./ mu0);
+BW = mu0.*T;
+fc = f0 + BW./2;
+u0 = (fc./Fs) .* sin(a0.*pi/2) + 0.5;
