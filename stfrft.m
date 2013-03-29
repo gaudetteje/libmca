@@ -14,7 +14,7 @@ function [t,y,z,t0,f0,z0] = stfrft(x,varargin)
 % constraining window
 
 % plotting constants
-DEBUG = true;
+DEBUG = 1;
 dBrange = 80;
 
 % frft search parameters
@@ -26,7 +26,8 @@ uRange = 0.025;                  % harmonic peak search range in time/frequency 
 
 % window parameters
 wind = @hamming;
-noverlap = nfft * 0.8;
+winsize = 2^7;
+noverlap = winsize * 0.5;%.8
 
 % define signal assumptions
 nComp = 3;                      % maximum number of components to retain
@@ -58,37 +59,40 @@ M = size(x,2);                  % total number of channels
 
 % define window
 if ischar(wind)
-    eval(sprintf('w = %s(nfft)',wind));
+    eval(sprintf('w = %s(%d);',wind,winsize));
 elseif isa(wind,'function_handle')
-    w = wind(nfft);
+    w = wind(winsize);
 else
     error('Unknown window entered - must be string or function handle')
 end
 w = w(:);           % force window into column vector
 
 % find starting index for each block
-block = floor(1:nfft-noverlap:L);
+block = floor(1:winsize-noverlap:L);
+x(L+1:block(end)+nfft-1) = 0;           % zero pad data for last block
+
 
 % FrFT indices
 alpha = linspace(0,1.99,nalpha);
 mu = linspace(0,1,nfft);
 
 % init cell array to hold estimates for each block
-[mu0(1:numel(block))] = deal({0});
-[f0(1:numel(block))] = deal({0});
-[z0(1:numel(block))] = deal({0});
+[mu0(1:numel(block))] = deal({nan});
+[f0(1:numel(block))] = deal({nan});
+[z0(1:numel(block))] = deal({nan});
 
 % iterate over each block
 for bNum = 1:numel(block)
-    bIdx = (block(bNum):block(bNum)+nfft-1);
+    bIdx = (block(bNum):block(bNum)+winsize-1);
+    xblock = x(bIdx);
     
-    % zero pad if last block too short
-    if bIdx(end) > L
-        x(L+1:bIdx(end)) = 0;
+    % zero pad if window longer than nfft
+    if (numel(xblock) < nfft)
+        xblock(end+1:winsize) = 0;
     end
     
     % extract and window data block
-    b = x(bIdx) .* repmat(w,1,M);
+    b = xblock .* repmat(w,1,M);
     
     % compute FrFT across entire rotation fraction plane
     [Z,A,U] = mca_frft(b,alpha,mu);     % NEED TO DO LOW RES SEARCH FIRST
@@ -106,6 +110,11 @@ for bNum = 1:numel(block)
     % find dominant peak and map corresponding LFM
     [aMax0,uMax0] = find_peaks(Z,alpha,mu);
     [~,muMax0,fMax0] = lfm_est(aMax0,uMax0,1,nfft);
+    
+    % if peak does not generate valid line, move on
+    if isinf(muMax0) || isnan(fMax0)
+        continue
+    end
     
     % find harmonic and subharmonic locations in frac-rot plane
     harm = zeros(1,nComp^2);
@@ -182,48 +191,68 @@ t0 = (block + nfft/2)';
     grid on
 %end
 
-% initialize components
-[f_i{1:nComp}] = deal(zeros(1,numel(t0)));
-[a_i{1:nComp}] = deal(zeros(1,numel(t0)));
+% initialize component vectors
+f_i = zeros(1,numel(t0));
+z_i = zeros(1,numel(t0));
+[F_i{1:nComp}] = deal(f_i);
+[A_i{1:nComp}] = deal(z_i);
 
-for bNum = 1:numel(block)-1
-    f = f0{bNum};
-    z = db(z0{bNum});
-    
-    if bNum == 1
-        for n = 1:nComp
-            f_i{n} = f(n);
-            a_i{n} = z(n);
+% iterate over each component to extract
+for cNum = 1:nComp
+
+    % find global maximum
+    [~,bIdx] = max(cellfun(@max,z0));
+
+    % search forward for next strongest component
+    for bNum = bIdx:numel(block)
+        f = f0{bNum};       % retrieve array of frequencies
+        z = z0{bNum};       % retrieve array of amplitudes
+
+        if 1 %DEBUG
+            plot3(t0(bNum)*ones(1,numel(f)),f,db(z),'.')    % plot all points
+        end
+        
+        % start off using first value (sorted by strongest peak)
+        if bNum == bIdx
+            f_i(bNum) = f(1);
+            z_i(bNum) = z(1);
+            
+            % remove item from list
+            f0{bNum}(1) = [];
+            z0{bNum}(1) = [];
+
+            if 1
+                plot3(t0(bNum),f_i(bNum),db(z_i(bNum)),'or')          % mark selected point
+            end
             continue
         end
-    end
-    f_next = f0{bNum+1};
-    z_next = db(z0{bNum+1});
-    
-    plot3(t0(bNum)*ones(1,numel(f)),f,db(z),'.')
-    
-    % search for nearest point in frequency and amplitude
-    for p = 1:nComp
-        D = dist([f(p); z(p)],[f_next;z_next]);
+
+        % search for nearest point in frequency and amplitude
+
+        D = dist([f_i(bNum-1); z_i(bNum-1)],[f; z]);
         idx = find(min(D)); % find nearest neighbor
 
         % append point to component
-        f_i{nComp} = f(idx);
-        a_i{nComp} = z(idx);
+        f_i(bNum) = f(idx);
+        z_i(bNum) = z(idx);
 
         % remove item from list
-        f_next(idx) = [];
-        z_next(idx) = [];
+        f0{bNum}(idx) = [];
+        z0{bNum}(idx) = [];
+        
+        if 1
+            plot3(t0(bNum),f_i(bNum),db(z_i(bNum)),'or')          % mark selected point
+        end
+        
+    %     dt = (z0{bNum}.^2 ./ (mu0{bNum} + 1));
+    %     df = mu0{bNum} .* dt;
+    %     quiver(t0(bNum)*ones(1,numel(f0{bNum})),f0{bNum},dt,df)
         
     end
     
-    
-%     dt = (z0{bNum}.^2 ./ (mu0{bNum} + 1));
-%     df = mu0{bNum} .* dt;
-%     quiver(t0(bNum)*ones(1,numel(f0{bNum})),f0{bNum},dt,df)
-    
+    F_i{cNum} = f_i;
+    A_i{cNum} = z_i;
 end
-
 
 % fit polynomial curve to points
 switch (FITMODE)
